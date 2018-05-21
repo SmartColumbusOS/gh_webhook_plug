@@ -19,6 +19,9 @@ defmodule GhWebhookPlugTest do
     end
   end
 
+  setup do
+    on_exit fn -> System.delete_env("GH_WEBHOOK_SECRET") end
+  end
 
   test "when verification fails, returns a 403" do
     conn = conn(:get, "/gh-webhook", "hello world") |> put_req_header("x-hub-signature", "sha1=wrong_hexdigest")
@@ -50,7 +53,7 @@ defmodule GhWebhookPlugTest do
 
   test "when secret set in param, it takes presedence over application setting" do
     # Demo plug where secret is in ENV var
-    defmodule DemoPlugParamPresendence do
+    defmodule DemoPlugParamPrecedence do
       use Plug.Builder
 
       plug GhWebhookPlug, secret: "secret",path: "/gh-webhook", action: {__MODULE__, :'gh_webhook'}
@@ -63,7 +66,7 @@ defmodule GhWebhookPlugTest do
     Application.put_env(:gh_webhook_plug, :secret, "wrong")
     hexdigest = "sha1=" <> (:crypto.hmac(:sha, "secret", "hello world") |> Base.encode16(case: :lower))
     conn = conn(:get, "/gh-webhook", "hello world") |> put_req_header("x-hub-signature", hexdigest)
-    |> DemoPlugParamPresendence.call([])
+    |> DemoPlugParamPrecedence.call([])
 
     assert conn.status == 200
     assert Process.get(:payload) == "hello world"
@@ -110,4 +113,27 @@ defmodule GhWebhookPlugTest do
     assert conn.status == 200
     assert Process.get(:payload) == "hello world"
   end
+
+  test "when secret set in system environment, it takes presedence over application setting and plug param" do
+    # Demo plug where secret is in ENV var
+    defmodule DemoPlugSystemEnvPrecedence do
+      use Plug.Builder
+
+      plug GhWebhookPlug, secret: "wrong",path: "/gh-webhook", action: {__MODULE__, :'gh_webhook'}
+
+      def gh_webhook(_conn, payload) do
+        Process.put(:payload, payload)
+      end
+    end
+
+    System.put_env("GH_WEBHOOK_SECRET", "secret")
+    Application.put_env(:gh_webhook_plug, :secret, "wrong")
+    hexdigest = "sha1=" <> (:crypto.hmac(:sha, "secret", "hello world") |> Base.encode16(case: :lower))
+    conn = conn(:get, "/gh-webhook", "hello world") |> put_req_header("x-hub-signature", hexdigest)
+    |> DemoPlugSystemEnvPrecedence.call([])
+
+    assert conn.status == 200
+    assert Process.get(:payload) == "hello world"
+  end
+  
 end

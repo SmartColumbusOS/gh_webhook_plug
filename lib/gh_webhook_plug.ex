@@ -35,8 +35,16 @@ defmodule GhWebhookPlug do
     Plug.Crypto.secure_compare(signature, signature_in_header)
   end
 
+
+  defp get_config(options, :secret) do
+    System.get_env(get_env_name(:secret)) || options[:secret] || get_config(:secret)
+  end
   defp get_config(options, key) do
     options[key] || get_config(key)
+  end
+
+  defp get_env_name(key) do
+    "GH_WEBHOOK_" <> to_string(key) |> String.upcase
   end
 
   defp get_config(key) do
